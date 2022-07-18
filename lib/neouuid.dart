@@ -5,9 +5,9 @@ import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
 
-/// A **u**niversally **u**nique **id**entifier, or UUID; a 128-bit laabel.
+/// A **u**niversally **u**nique **id**entifier, or UUID; a 128-bit label.
 ///
-/// UUIds, are, for practical purposes, unique, without a central registration
+/// UUIds, are, for practical purposes, unique and without a central registration
 /// authority. While the probability that a UUID will be duplicated is not zero,
 /// it is close enough to zero to be negligible.
 ///
@@ -57,7 +57,7 @@ abstract class Uuid {
   /// - [s]: unsigned 16-bits
   /// - [n]: unsigned 48-bits
   ///
-  /// This is intended to be a convenience constructor instead [Uuid.parse]:
+  /// This is intended to be a convenience constructor instead [Uuid.parse] :
   /// ```
   /// // These UUIDs represent the same value.
   /// Uuid.parse('123e4567-e89b-12d3-a456-426655440000')
