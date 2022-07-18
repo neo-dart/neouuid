@@ -1,6 +1,6 @@
 name: neouuid
 description: Fast and idiomatic UUIDs (Universally Unique Identifiers) in Dart.
-version: 0.0.0
+version: 0.1.0
 homepage: https://github.com/neo-dart/neouuid
 
 environment:
