@@ -1,9 +1,55 @@
 /// Fast and idiomatic UUIDs (Universally Unique Identifiers) in Dart.
 library neouuid;
 
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
+
+/// Represents a class that, when [generate] is invoked, returns a new [Uuid].
+///
+/// By default, factory functions (such as [Uuid.v4]) can be used as a sort of
+/// "default" [UuidGenerator].
+abstract class UuidGenerator {
+  /// Creates a new UUID.
+  Uuid generate();
+}
+
+/// Generates random-based UUIDs (i.e. [UuidVersion.v4]).
+///
+/// This is the default implementation for [Uuid.v4].
+@sealed
+class UuidV4Generator implements UuidGenerator {
+  static final _bufferUint8 = Uint8List(16);
+  static final _bufferUint32 = Uint32List.view(_bufferUint8.buffer);
+
+  final Random _rng;
+
+  /// Create a new instance of this generator with the provided [rng].
+  factory UuidV4Generator([Random? rng]) = UuidV4Generator._;
+  UuidV4Generator._([Random? rng]) : _rng = rng ?? Random.secure();
+
+  /// Creates a new UUID that is completely random.
+  @override
+  Uuid generate() {
+    for (var i = 0; i < 4; i++) {
+      final u32 = _rng.nextInt(0xffffffff);
+      _bufferUint8
+        ..[i * 4] = u32 >> 24
+        ..[i * 4 + 1] = u32 >> 16
+        ..[i * 4 + 2] = u32 >> 8
+        ..[i * 4 + 3] = u32;
+    }
+
+    // Variant 1.
+    _bufferUint8[8] = (_bufferUint8[8] & 0x3f) | 0x80;
+
+    // Version 4.
+    _bufferUint8[6] = (_bufferUint8[6] & 0x0f) | 0x40;
+
+    return Uuid.fromBytes(_bufferUint32);
+  }
+}
 
 /// A **u**niversally **u**nique **id**entifier, or UUID; a 128-bit label.
 ///
@@ -120,6 +166,15 @@ abstract class Uuid {
 
     // Intentionlaly not validated, as it's impossible *not* to be in range.
     return _Uuid(l, m, h, s, n);
+  }
+
+  static final _uuidV4 = UuidV4Generator();
+
+  /// Creates and returns a random UUID.
+  ///
+  /// If [rng] is omitted, a default instance is used from [UuidV4Generator].
+  factory Uuid.v4({Random? rng}) {
+    return (rng == null ? UuidV4Generator(rng) : _uuidV4).generate();
   }
 
   /// Returns a timestamp if [UuidVersion.v1], otherwise returns `null`.
