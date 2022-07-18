@@ -275,7 +275,8 @@ class _Uuid implements Uuid {
 
   @override
   int get node {
-    return _d | ((_c & 0xffff) << 32);
+    // In JavaScript both `|` and `<< 32` would be truncated.
+    return _d + ((_c & 0xffff) * _pow2to32);
   }
 
   static String _toOctals(int i, int l) => i.toRadixString(16).padLeft(l, '0');

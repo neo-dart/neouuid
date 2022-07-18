@@ -2,12 +2,24 @@
 
 Fast and idiomatic UUIDs (Universally Unique Identifiers) in Dart.
 
+[![Binary on pub.dev][pub_img]][pub_url]
+[![Code coverage][cov_img]][cov_url]
+[![Github action status][gha_img]][gha_url]
+[![Dartdocs][doc_img]][doc_url]
 [![Style guide][sty_img]][sty_url]
 
+[pub_url]: https://pub.dartlang.org/packages/neouuid
+[pub_img]: https://img.shields.io/pub/v/neouuid.svg
+[gha_url]: https://github.com/neo-dart/neouuid/actions
+[gha_img]: https://github.com/neo-dart/neouuid/workflows/Dart/badge.svg
+[cov_url]: https://codecov.io/gh/neo-dart/neouuid
+[cov_img]: https://codecov.io/gh/neo-dart/neouuid/branch/main/graph/badge.svg
+[doc_url]: https://www.dartdocs.org/documentation/neouuid/latest
+[doc_img]: https://img.shields.io/badge/Documentation-neouuid-blue.svg
 [sty_url]: https://pub.dev/packages/neodart
 [sty_img]: https://img.shields.io/badge/style-neodart-9cf.svg
 
-This library generates UUIDs, 128-bits represented as 32 hexadecimal digits:
+This library decodes and generates UUIDs, 128-bits represented as 32 hexadecimal digits:
 
 ```txt
 ba6eb330-4f7f-11eb-a2fb-67c34e9ac07c
@@ -25,6 +37,13 @@ The generator supports three different [UUID][] modes:
 
 [uuid]: https://tools.ietf.org/html/rfc4122.html
 [v1]: https://datatracker.ietf.org/doc/html/rfc4122
+
+## Performance & Compatibility
+
+This package is intended to work identically and well in both the standalone
+Dart VM, Flutter, and web builds of Dart and Flutter (both in DDC and Dart2JS).
+Contributions are welcome to add special-cased that improves performacne for a
+specific platform (as long as there is a fallback for other platforms).
 
 ## Contributing
 
