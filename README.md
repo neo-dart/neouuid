@@ -31,3 +31,4 @@ The generator supports three different [UUID][] modes:
 Some inspiration:
 
 - <https://github.com/uuidjs/uuid>
+- <https://www.uuidtools.com/decode>
