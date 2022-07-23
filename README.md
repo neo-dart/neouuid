@@ -45,6 +45,25 @@ Dart VM, Flutter, and web builds of Dart and Flutter (both in DDC and Dart2JS).
 Contributions are welcome to add special-cased that improves performacne for a
 specific platform (as long as there is a fallback for other platforms).
 
+### Benchmarks
+
+| Package     | Equivalent to `Uuid.parse` |
+| ----------- | -------------------------- |
+| `neouuid`   | 01.55us                    |
+| `uuid`      | 15.66us                    |
+| `uuid_type` | 00.78us                    |
+
+As of 2022-07-22 on a Macbook Pro (M1), `uuid_type` is ~2x faster:
+
+```bash
+dart benchmark/neouuid_parse.dart
+dart benchmark/uuid_parse.dart
+dart benchmark/uuid_type_parse.dart
+```
+
+This is mainly due to this package using `int.parse` instead of building up a
+byte buffer from hexadecimel character matches.
+
 ## Contributing
 
 Some inspiration:
