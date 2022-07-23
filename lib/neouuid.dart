@@ -15,25 +15,93 @@ abstract class UuidGenerator {
   Uuid generate();
 }
 
+final _bufferUint8 = Uint8List(16);
+final _bufferUint32 = Uint32List.view(_bufferUint8.buffer);
+
+/// Generates timestamp-based UUIDs (i.e. [UuidVersion.v1]).
+///
+/// This is the default implementation for [Uuid.v1].
+@sealed
+class UuidV1Generator implements UuidGenerator {
+  static final Uint8List _randomUnique = (() {
+    final output = Uint8List(6);
+    final random = Random.secure();
+    var u32 = random.nextInt(0xffffffff);
+    output
+      ..[0] = (u32 >> 24) | 0x01
+      ..[1] = (u32 >> 16)
+      ..[2] = (u32 >> 8)
+      ..[3] = (u32 >> 0);
+    u32 = random.nextInt(0xffffffff);
+    output
+      ..[4] = (u32 >> 8)
+      ..[5] = (u32 >> 0);
+    return output;
+  })();
+
+  // Generates the current timestamp.
+  final DateTime Function() _now;
+
+  // Something like a MAC address.
+  final Uint8List _nodeId;
+
+  // TODO: factory TimeUuidGenerator.fromLastUuid.
+
+  /// Creates an instance of this generator with the provided configuration.
+  ///
+  /// For platforms where a unique identifier is available, such as a
+  /// [MAC address](https://en.wikipedia.org/wiki/MAC_address), that may be
+  /// considered.
+  ///
+  /// Optionally provide a [now], otherwise defaults to [DateTime.now];
+  factory UuidV1Generator({
+    DateTime Function()? now,
+  }) {
+    return UuidV1Generator._(now ?? DateTime.now, _randomUnique);
+  }
+
+  /// Creates an instance of this generator with the provided unique [nodeId].
+  ///
+  /// For platforms where a unique identifier is available, such as a
+  /// [MAC address](https://en.wikipedia.org/wiki/MAC_address), that may be
+  /// considered.
+  ///
+  /// Optionally provide a [now], otherwise defaults to [DateTime.now];
+  factory UuidV1Generator.withNodeId(
+    Uint8List nodeId, {
+    DateTime Function()? now,
+  }) {
+    return UuidV1Generator._(now ?? DateTime.now, nodeId);
+  }
+
+  UuidV1Generator._(this._now, this._nodeId);
+
+  @override
+  Uuid generate() {
+    throw UnimplementedError(
+      '$_nodeId: ${_now().millisecondsSinceEpoch}',
+    );
+  }
+}
+
 /// Generates random-based UUIDs (i.e. [UuidVersion.v4]).
 ///
 /// This is the default implementation for [Uuid.v4].
 @sealed
 class UuidV4Generator implements UuidGenerator {
-  static final _bufferUint8 = Uint8List(16);
-  static final _bufferUint32 = Uint32List.view(_bufferUint8.buffer);
+  final Random _random;
 
-  final Random _rng;
-
-  /// Create a new instance of this generator with the provided [rng].
-  factory UuidV4Generator([Random? rng]) = UuidV4Generator._;
-  UuidV4Generator._([Random? rng]) : _rng = rng ?? Random.secure();
+  /// Create a new instance of this generator with the provided [random].
+  ///
+  /// If omitted, [random] defaults to [Random.secure].
+  factory UuidV4Generator([Random? random]) = UuidV4Generator._;
+  UuidV4Generator._([Random? random]) : _random = random ?? Random.secure();
 
   /// Creates a new UUID that is completely random.
   @override
   Uuid generate() {
     for (var i = 0; i < 4; i++) {
-      final u32 = _rng.nextInt(0xffffffff);
+      final u32 = _random.nextInt(0xffffffff);
       _bufferUint8
         ..[i * 4] = u32 >> 24
         ..[i * 4 + 1] = u32 >> 16
@@ -168,13 +236,29 @@ abstract class Uuid {
     return _Uuid(l, m, h, s, n);
   }
 
+  static final _uuidV1 = UuidV1Generator();
+
+  /// Generates and returns a unique timestamp-based UUID.
+  factory Uuid.v1({
+    DateTime Function()? now,
+    int? key,
+  }) {
+    final UuidGenerator generator;
+    if (now == null && key == null) {
+      generator = _uuidV1;
+    } else if (key == null) {
+      generator = UuidV1Generator(now: now);
+    } else {
+      generator = UuidV1Generator.withUniqueKey(key, now: now);
+    }
+    return generator.generate();
+  }
+
   static final _uuidV4 = UuidV4Generator();
 
   /// Creates and returns a random UUID.
-  ///
-  /// If [rng] is omitted, a default instance is used from [UuidV4Generator].
-  factory Uuid.v4({Random? rng}) {
-    return (rng == null ? UuidV4Generator(rng) : _uuidV4).generate();
+  factory Uuid.v4({Random? random}) {
+    return (random == null ? UuidV4Generator(random) : _uuidV4).generate();
   }
 
   /// Returns a timestamp if [UuidVersion.v1], otherwise returns `null`.
