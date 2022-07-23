@@ -101,7 +101,7 @@ void main() {
     //                       ^^^^^^^^ ^^^^ 0^^^
     //                       59c18cc6 0610  1dd
     //
-    //                       revsersed endianness:
+    //                       reversed endianness:
     //                       dd101606 cc81  c95
     //
     // combined as a timestamp:

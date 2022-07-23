@@ -18,69 +18,131 @@ abstract class UuidGenerator {
 final _bufferUint8 = Uint8List(16);
 final _bufferUint32 = Uint32List.view(_bufferUint8.buffer);
 
-/// Generates timestamp-based UUIDs (i.e. [UuidVersion.v1]).
+/// Generates unique timestamp-based UUIDs (i.e. [UuidVersion.v1]).
 ///
 /// This is the default implementation for [Uuid.v1].
 @sealed
 class UuidV1Generator implements UuidGenerator {
-  static final Uint8List _randomUnique = (() {
-    final output = Uint8List(6);
-    final random = Random.secure();
-    var u32 = random.nextInt(0xffffffff);
-    output
-      ..[0] = (u32 >> 24) | 0x01
-      ..[1] = (u32 >> 16)
-      ..[2] = (u32 >> 8)
-      ..[3] = (u32 >> 0);
-    u32 = random.nextInt(0xffffffff);
-    output
-      ..[4] = (u32 >> 8)
-      ..[5] = (u32 >> 0);
-    return output;
-  })();
+  static int _generateUniqueId() {
+    final rng = Random.secure();
+    return rng.nextInt(0xffffffffffff);
+  }
+
+  static int _generateClockSequence() {
+    final rng = Random.secure();
+    return rng.nextInt(1 << 14);
+  }
+
+  // 48-bit integer; stays constant for each instance of the generator.
+  final int _uniqueId;
 
   // Generates the current timestamp.
   final DateTime Function() _now;
 
-  // Something like a MAC address.
-  final Uint8List _nodeId;
+  // JavaScript numbers are not precise enough for nanoseconds.
+  //
+  // Instead, we increment this value to simulate a higher resolution clock.
+  var _lastNs = 0;
+  var _lastMs = 0;
 
-  // TODO: factory TimeUuidGenerator.fromLastUuid.
+  // Consistently increases for each instance of the generator.
+  int _clockSequence;
 
-  /// Creates an instance of this generator with the provided configuration.
+  /// Creates a new instance of a generator with the provided configuration.
   ///
-  /// For platforms where a unique identifier is available, such as a
-  /// [MAC address](https://en.wikipedia.org/wiki/MAC_address), that may be
-  /// considered.
-  ///
-  /// Optionally provide a [now], otherwise defaults to [DateTime.now];
+  /// If omitted, [uniqueness] defaults to a random 6-byte (48-bit) ID.
+  /// If omitted, [clockSequence] defaults to a random 14-bit value.
   factory UuidV1Generator({
-    DateTime Function()? now,
+    int? uniqueness,
+    int? clockSequence,
+    DateTime Function() now = DateTime.now,
   }) {
-    return UuidV1Generator._(now ?? DateTime.now, _randomUnique);
+    return UuidV1Generator._(
+      uniqueness ?? _generateUniqueId(),
+      clockSequence ?? _generateClockSequence(),
+      now,
+    );
   }
 
-  /// Creates an instance of this generator with the provided unique [nodeId].
+  /// Creates a new instance of a generator from a previously generated [uuid].
   ///
-  /// For platforms where a unique identifier is available, such as a
-  /// [MAC address](https://en.wikipedia.org/wiki/MAC_address), that may be
-  /// considered.
+  /// Both [Uuid.node] and [Uuid.clock] are used.
   ///
-  /// Optionally provide a [now], otherwise defaults to [DateTime.now];
-  factory UuidV1Generator.withNodeId(
-    Uint8List nodeId, {
-    DateTime Function()? now,
+  /// If [Uuid.time] is ahead of [now], the clock sequence is increased.
+  ///
+  /// See: <https://tools.ietf.org/html/rfc4122#section-4.2.1>
+  factory UuidV1Generator.fromLastUuid(
+    Uuid uuid, {
+    DateTime Function() now = DateTime.now,
   }) {
-    return UuidV1Generator._(now ?? DateTime.now, nodeId);
+    if (uuid.version != UuidVersion.v1) {
+      throw ArgumentError.value(uuid.version, 'version', 'UUID is not v1');
+    }
+    var clockSequence = uuid.clock;
+    if (uuid.time!.compareTo(now()) > 0) {
+      clockSequence++;
+      clockSequence &= 0x3fff;
+    }
+    return UuidV1Generator._(uuid.node, clockSequence, now);
   }
 
-  UuidV1Generator._(this._now, this._nodeId);
+  UuidV1Generator._(this._uniqueId, this._clockSequence, this._now);
 
   @override
   Uuid generate() {
-    throw UnimplementedError(
-      '$_nodeId: ${_now().millisecondsSinceEpoch}',
-    );
+    // https://datatracker.ietf.org/doc/html/rfc4122#section-4.2.2
+    var clockSequence = _clockSequence;
+
+    // Approximate higher-resoluton timestamps.
+    var ms = _now().millisecondsSinceEpoch;
+    var ns = ++_lastNs;
+
+    // Time since last UUID creation (in ms).
+    final dt = ms - _lastMs + (ns - _lastNs) / 10000;
+
+    // Per 4.2.1.2, bump on clock regression.
+    if (dt < 0) {
+      clockSequence = (clockSequence + 1) & 0x3fff;
+    }
+
+    // Reset simulated nano-seconds if clock regresses or new time interval.
+    if (dt < 0 || ms > _lastMs) {
+      ns = 0;
+    }
+
+    // Per 4.2.1.2 throw an error if too many UUIDs are requested.
+    if (ns >= 10000) {
+      throw StateError('Cannot create more than 10M UUIDs/sec');
+    }
+
+    _lastMs = ms;
+    _lastNs = ns;
+    _clockSequence = clockSequence;
+
+    // Per 4.1.4, convert from Unix epoch to Gregorian epoch.
+    ms += _gregorianToUnix;
+
+    return _generate(ms, ns, clockSequence, _uniqueId);
+  }
+
+  /// This function is to isolate stateless generation from stateful.
+  static Uuid _generate(int ms, int ns, int clockSequence, int nodeId) {
+    const mask32B = 0xfffffff;
+    const mask16B = 0xffff;
+    const version = 0x1000;
+    const variant = 0x8000;
+
+    // Time (l/m/h)
+    final l = ((ms & mask32B) * 10000 + ns) % 0x100000000;
+    final mh = ((ms / 0x100000000).floor() * 10000) & mask32B;
+    final m = mh & mask16B;
+    final h = ((mh >> 16) & mask16B) | version;
+
+    // Clock and Node
+    final s = clockSequence | variant;
+    final n = nodeId;
+
+    return _Uuid(l, m, h, s, n);
   }
 }
 
@@ -91,9 +153,9 @@ class UuidV1Generator implements UuidGenerator {
 class UuidV4Generator implements UuidGenerator {
   final Random _random;
 
-  /// Create a new instance of this generator with the provided [random].
+  /// Create a new instance of a generator with the provided [random].
   ///
-  /// If omitted, [random] defaults to [Random.secure].
+  /// If omitted, [random] defaults to a new instance of [Random.secure].
   factory UuidV4Generator([Random? random]) = UuidV4Generator._;
   UuidV4Generator._([Random? random]) : _random = random ?? Random.secure();
 
@@ -239,17 +301,20 @@ abstract class Uuid {
   static final _uuidV1 = UuidV1Generator();
 
   /// Generates and returns a unique timestamp-based UUID.
+  ///
+  /// For additional customization, create an instance of [UuidV1Generator].
   factory Uuid.v1({
-    DateTime Function()? now,
+    DateTime Function() now = DateTime.now,
     int? key,
   }) {
     final UuidGenerator generator;
-    if (now == null && key == null) {
+    if (now == DateTime.now && key == null) {
       generator = _uuidV1;
-    } else if (key == null) {
-      generator = UuidV1Generator(now: now);
     } else {
-      generator = UuidV1Generator.withUniqueKey(key, now: now);
+      generator = UuidV1Generator(
+        uniqueness: key,
+        now: now,
+      );
     }
     return generator.generate();
   }
