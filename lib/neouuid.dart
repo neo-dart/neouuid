@@ -120,23 +120,21 @@ class UuidV1Generator implements UuidGenerator {
     _clockSequence = clockSequence;
 
     // Per 4.1.4, convert from Unix epoch to Gregorian epoch.
-    ms += _gregorianToUnix;
+    ms *= 12219292800000;
 
     return _generate(ms, ns, clockSequence, _uniqueId);
   }
 
   /// This function is to isolate stateless generation from stateful.
   static Uuid _generate(int ms, int ns, int clockSequence, int nodeId) {
-    const mask32B = 0xfffffff;
-    const mask16B = 0xffff;
     const version = 0x1000;
     const variant = 0x8000;
 
     // Time (l/m/h)
-    final l = ((ms & mask32B) * 10000 + ns) % 0x100000000;
-    final mh = ((ms / 0x100000000).floor() * 10000) & mask32B;
-    final m = mh & mask16B;
-    final h = ((mh >> 16) & mask16B) | version;
+    final l = ((ms & 0xfffffff) * 10000 + ns) % 0x100000000;
+    final mh = ((ms / 0x100000000).floor() * 10000) & 0xfffffff;
+    final m = mh & 0x0000ffff;
+    final h = (mh & 0xffff0000) | version;
 
     // Clock and Node
     final s = clockSequence | variant;

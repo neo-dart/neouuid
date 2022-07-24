@@ -31,6 +31,7 @@ void main() {
       // 2022-07-23 17:32:50.363Z
       now = DateTime.fromMillisecondsSinceEpoch(1658597570363, isUtc: true);
       final uuid = generator.generate();
+      print(uuid);
       // expect(uuid, Uuid(0xa822b8b0, 0x5b50, 0x103b, 0x8000, 0x000000003039));
       expect(uuid.version, UuidVersion.v1);
       expect(uuid.variant, UuidVariant.isoRfc4122Standard);
