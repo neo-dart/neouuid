@@ -120,7 +120,7 @@ class UuidV1Generator implements UuidGenerator {
     _clockSequence = clockSequence;
 
     // Per 4.1.4, convert from Unix epoch to Gregorian epoch.
-    ms += 12219292800000;
+    ms += _gregorianToUnix;
 
     return _generate(ms, ns, clockSequence, _uniqueId);
   }
@@ -440,9 +440,9 @@ class _Uuid implements Uuid {
     final hiLo = BigInt.parse('$hi$lo', radix: 16);
 
     // Convert into milliseconds, to Unix epoch, etc.
-    final tsSec = hiLo ~/ _$100nsIntervalsToSeconds;
-    final tsUnx = tsSec.toInt() - _gregorianToUnix;
-    return DateTime.fromMillisecondsSinceEpoch(tsUnx * 1000, isUtc: true);
+    final tsSec = hiLo / _$100nsIntervalsToSeconds;
+    final tsUnx = tsSec.floor() - _gregorianToUnix;
+    return DateTime.fromMillisecondsSinceEpoch(tsUnx, isUtc: true);
   }
 
   @override
@@ -579,14 +579,14 @@ const _pow2to32 = 0x100000000;
 /// // Gregorian --> Unix
 /// ms -= _unixGregorianEpochDelta;
 /// ```
-const _gregorianToUnix = 12219292800;
+const _gregorianToUnix = 12219292800000;
 
 /// Represents the dividend to convert from 100 nanosecond intervals to seconds.
 ///
 /// ```dart
 /// seconds = timeIn100NsIntervals / _100nsIntervalsToSeconds;
 /// ```
-final _$100nsIntervalsToSeconds = BigInt.from(10000000);
+final _$100nsIntervalsToSeconds = BigInt.from(10000);
 
 /// Using the `input >> 32` operator won't work as intended.
 ///

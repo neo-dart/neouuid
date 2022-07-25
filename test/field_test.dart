@@ -110,7 +110,7 @@ void main() {
     // reverse endianness:
     // 0xde1a060879d79b2
     // ... and then interpret as a DateTime/timestamp.
-    expect(uuid.time, DateTime.utc(2008, 04, 09, 08, 38, 38));
+    expect(uuid.time, DateTime.utc(2008, 04, 09, 08, 38, 38, 608));
   });
 
   test('should decode a clock sequence (for v1)', () {
