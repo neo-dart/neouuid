@@ -131,7 +131,7 @@ class UuidV1Generator implements UuidGenerator {
     const variant = 0x8000;
 
     // Time (l/m/h)
-    final mh = ((ms / 0x100000000).floor() * 10000) & 0xfffffff;
+    final mh = ((ms / 0x100000000 * 10000).floor()) & 0xfffffff;
     final l = ((ms & 0xfffffff) * 10000 + ns) % 0x100000000;
     final m = mh & 0xffff;
     final h = (mh >> 16) & 0xfff | version;
