@@ -169,11 +169,11 @@ class UuidV4Generator implements UuidGenerator {
         ..[i * 4 + 3] = u32;
     }
 
-    // Variant 1.
-    _bufferUint8[8] = (_bufferUint8[8] & 0x3f) | 0x80;
-
     // Version 4.
-    _bufferUint8[6] = (_bufferUint8[6] & 0x0f) | 0x40;
+    _bufferUint8[5] = (_bufferUint8[5] & 0x0f) | 0x40;
+
+    // Variant 1.
+    _bufferUint8[11] = (_bufferUint8[11] & 0x3f) | 0x80;
 
     return Uuid.fromBytes(_bufferUint32);
   }

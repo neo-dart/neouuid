@@ -1,8 +1,9 @@
 # CHANGELOG
 
-## 0.0.2
+## 0.1.0
 
 - Added `UuidV1Generator` and `Uuid.v1()`.
+- **Breaking**: Fixed bugs related to `Uuid.v4()` and parsing UUIDs.
 
 ## 0.0.1
 

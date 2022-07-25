@@ -7,7 +7,7 @@ void main() {
   test('should generate a random UUID (v4)', () {
     final generator = UuidV4Generator(Random(1234));
     final uuid = generator.generate();
-    expect(uuid, Uuid(0x53b59845, 0x2b4a, 0x31a6, 0x6423, 0xabb6a282c8b5));
+    expect(uuid, Uuid(0x53b59845, 0x2b0a, 0x41a6, 0xa423, 0xabf6a282c8b5));
     expect(uuid.version, UuidVersion.v4);
     expect(uuid.variant, UuidVariant.isoRfc4122Standard);
     expect(uuid.time, isNull);
