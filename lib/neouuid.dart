@@ -8,11 +8,144 @@ import 'package:meta/meta.dart';
 
 /// Represents a class that, when [generate] is invoked, returns a new [Uuid].
 ///
-/// By default, factory functions (such as [Uuid.v4]) can be used as a sort of
-/// "default" [UuidGenerator].
+/// For simple usecases, it is recommended to directly use factories on [Uuid]:
+/// - [Uuid.v1]
+/// - [Uuid.v4]
 abstract class UuidGenerator {
   /// Creates a new UUID.
   Uuid generate();
+}
+
+// Since Dart is single-threaded, we can safely use one buffer/view for all of
+// the various generators and functions in this library, and not worry about
+// race conditions.
+final _bufferUint8 = Uint8List(16);
+final _bufferUint32 = Uint32List.view(_bufferUint8.buffer);
+
+/// Generates unique timestamp-based UUIDs (i.e. [UuidVersion.v1]).
+///
+/// This is the default implementation for [Uuid.v1].
+@sealed
+class UuidV1Generator implements UuidGenerator {
+  static int _generateUniqueId() {
+    final rng = Random.secure();
+    return rng.nextInt(0xffffffffffff);
+  }
+
+  static int _generateClockSequence() {
+    final rng = Random.secure();
+    return rng.nextInt(1 << 14);
+  }
+
+  // 48-bit integer; stays constant for each instance of the generator.
+  final int _uniqueId;
+
+  // Generates the current timestamp.
+  final DateTime Function() _now;
+
+  // JavaScript numbers are not precise enough for nanoseconds.
+  //
+  // Instead, we increment this value to simulate a higher resolution clock.
+  var _lastNs = 0;
+  var _lastMs = 0;
+
+  // Consistently increases for each instance of the generator.
+  int _clockSequence;
+
+  /// Creates a new instance of a generator with the provided configuration.
+  ///
+  /// If omitted, [uniqueness] defaults to a random 6-byte (48-bit) ID.
+  /// If omitted, [clockSequence] defaults to a random 14-bit value.
+  factory UuidV1Generator({
+    int? uniqueness,
+    int? clockSequence,
+    DateTime Function() now = DateTime.now,
+  }) {
+    return UuidV1Generator._(
+      uniqueness ?? _generateUniqueId(),
+      clockSequence ?? _generateClockSequence(),
+      now,
+    );
+  }
+
+  /// Creates a new instance of a generator from a previously generated [uuid].
+  ///
+  /// Both [Uuid.node] and [Uuid.clock] are used.
+  ///
+  /// If [Uuid.time] is ahead of [now], the clock sequence is increased.
+  ///
+  /// See: <https://tools.ietf.org/html/rfc4122#section-4.2.1>
+  factory UuidV1Generator.fromLastUuid(
+    Uuid uuid, {
+    DateTime Function() now = DateTime.now,
+  }) {
+    if (uuid.version != UuidVersion.v1) {
+      throw ArgumentError.value(uuid.version, 'version', 'UUID is not v1');
+    }
+    var clockSequence = uuid.clock;
+    if (uuid.time!.compareTo(now()) > 0) {
+      clockSequence++;
+      clockSequence &= 0x3fff;
+    }
+    return UuidV1Generator._(uuid.node, clockSequence, now);
+  }
+
+  UuidV1Generator._(this._uniqueId, this._clockSequence, this._now);
+
+  @override
+  Uuid generate() {
+    // https://datatracker.ietf.org/doc/html/rfc4122#section-4.2.2
+    var clockSequence = _clockSequence;
+
+    // Approximate higher-resoluton timestamps.
+    var ms = _now().millisecondsSinceEpoch;
+    var ns = ++_lastNs;
+
+    // Time since last UUID creation (in ms).
+    final dt = ms - _lastMs + (ns - _lastNs) / 10000;
+
+    // Per 4.2.1.2, bump on clock regression.
+    if (dt < 0) {
+      clockSequence = (clockSequence + 1) & 0x3fff;
+    }
+
+    // Reset simulated nano-seconds if clock regresses or new time interval.
+    if (dt < 0 || ms > _lastMs) {
+      ns = 0;
+    }
+
+    // Per 4.2.1.2 throw an error if too many UUIDs are requested.
+    if (ns >= 10000) {
+      throw StateError('Cannot create more than 10M UUIDs/sec');
+    }
+
+    _lastMs = ms;
+    _lastNs = ns;
+    _clockSequence = clockSequence;
+
+    // Per 4.1.4, convert from Unix epoch to Gregorian epoch.
+    ms += _gregorianToUnix;
+
+    return _generate(ms, ns, clockSequence, _uniqueId);
+  }
+
+  /// This function is to isolate stateless generation from stateful.
+  static Uuid _generate(int ms, int ns, int clockSequence, int nodeId) {
+    const version = 0x1000;
+    const variant = 0x8000;
+
+    // Time (l/m/h)
+    final mh = ((ms / 0x100000000 * 10000).floor()) & 0xfffffff;
+    final l = ((ms & 0xfffffff) * 10000 + ns) % 0x100000000;
+    final m = mh & 0xffff;
+    final h = (mh >> 16) & 0xfff | version;
+
+    // Clock and Node
+    final s = clockSequence | variant;
+    final n = nodeId;
+
+    return _Uuid(l, m, h, s, n);
+  }
 }
 
 /// Generates random-based UUIDs (i.e. [UuidVersion.v4]).
@@ -20,20 +153,19 @@ abstract class UuidGenerator {
 /// This is the default implementation for [Uuid.v4].
 @sealed
 class UuidV4Generator implements UuidGenerator {
-  static final _bufferUint8 = Uint8List(16);
-  static final _bufferUint32 = Uint32List.view(_bufferUint8.buffer);
+  final Random _random;
 
-  final Random _rng;
-
-  /// Create a new instance of this generator with the provided [rng].
-  factory UuidV4Generator([Random? rng]) = UuidV4Generator._;
-  UuidV4Generator._([Random? rng]) : _rng = rng ?? Random.secure();
+  /// Create a new instance of a generator with the provided [random].
+  ///
+  /// If omitted, [random] defaults to a new instance of [Random.secure].
+  factory UuidV4Generator([Random? random]) = UuidV4Generator._;
+  UuidV4Generator._([Random? random]) : _random = random ?? Random.secure();
 
   /// Creates a new UUID that is completely random.
   @override
   Uuid generate() {
     for (var i = 0; i < 4; i++) {
-      final u32 = _rng.nextInt(0xffffffff);
+      final u32 = _random.nextInt(0xffffffff);
       _bufferUint8
         ..[i * 4] = u32 >> 24
         ..[i * 4 + 1] = u32 >> 16
@@ -41,11 +173,11 @@ class UuidV4Generator implements UuidGenerator {
         ..[i * 4 + 3] = u32;
     }
 
-    // Variant 1.
-    _bufferUint8[8] = (_bufferUint8[8] & 0x3f) | 0x80;
-
     // Version 4.
-    _bufferUint8[6] = (_bufferUint8[6] & 0x0f) | 0x40;
+    _bufferUint8[5] = (_bufferUint8[5] & 0x0f) | 0x40;
+
+    // Variant 1.
+    _bufferUint8[11] = (_bufferUint8[11] & 0x3f) | 0x80;
 
     return Uuid.fromBytes(_bufferUint32);
   }
@@ -168,13 +300,32 @@ abstract class Uuid {
     return _Uuid(l, m, h, s, n);
   }
 
+  static final _uuidV1 = UuidV1Generator();
+
+  /// Generates and returns a unique timestamp-based UUID.
+  ///
+  /// For additional customization, create an instance of [UuidV1Generator].
+  factory Uuid.v1({
+    DateTime Function() now = DateTime.now,
+    int? key,
+  }) {
+    final UuidGenerator generator;
+    if (now == DateTime.now && key == null) {
+      generator = _uuidV1;
+    } else {
+      generator = UuidV1Generator(
+        uniqueness: key,
+        now: now,
+      );
+    }
+    return generator.generate();
+  }
+
   static final _uuidV4 = UuidV4Generator();
 
   /// Creates and returns a random UUID.
-  ///
-  /// If [rng] is omitted, a default instance is used from [UuidV4Generator].
-  factory Uuid.v4({Random? rng}) {
-    return (rng == null ? UuidV4Generator(rng) : _uuidV4).generate();
+  factory Uuid.v4({Random? random}) {
+    return (random == null ? UuidV4Generator(random) : _uuidV4).generate();
   }
 
   /// Returns a timestamp if [UuidVersion.v1], otherwise returns `null`.
@@ -293,9 +444,9 @@ class _Uuid implements Uuid {
     final hiLo = BigInt.parse('$hi$lo', radix: 16);
 
     // Convert into milliseconds, to Unix epoch, etc.
-    final tsSec = hiLo ~/ _$100nsIntervalsToSeconds;
-    final tsUnx = tsSec.toInt() - _gregorianToUnix;
-    return DateTime.fromMillisecondsSinceEpoch(tsUnx * 1000, isUtc: true);
+    final tsSec = hiLo / _$100nsIntervalsToSeconds;
+    final tsUnx = tsSec.floor() - _gregorianToUnix;
+    return DateTime.fromMillisecondsSinceEpoch(tsUnx, isUtc: true);
   }
 
   @override
@@ -432,14 +583,14 @@ const _pow2to32 = 0x100000000;
 /// // Gregorian --> Unix
 /// ms -= _unixGregorianEpochDelta;
 /// ```
-const _gregorianToUnix = 12219292800;
+const _gregorianToUnix = 12219292800000;
 
 /// Represents the dividend to convert from 100 nanosecond intervals to seconds.
 ///
 /// ```dart
 /// seconds = timeIn100NsIntervals / _100nsIntervalsToSeconds;
 /// ```
-final _$100nsIntervalsToSeconds = BigInt.from(10000000);
+final _$100nsIntervalsToSeconds = BigInt.from(10000);
 
 /// Using the `input >> 32` operator won't work as intended.
 ///
