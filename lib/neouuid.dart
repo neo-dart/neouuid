@@ -8,13 +8,17 @@ import 'package:meta/meta.dart';
 
 /// Represents a class that, when [generate] is invoked, returns a new [Uuid].
 ///
-/// By default, factory functions (such as [Uuid.v4]) can be used as a sort of
-/// "default" [UuidGenerator].
+/// For simple usecases, it is recommended to directly use factories on [Uuid]:
+/// - [Uuid.v1]
+/// - [Uuid.v4]
 abstract class UuidGenerator {
   /// Creates a new UUID.
   Uuid generate();
 }
 
+// Since Dart is single-threaded, we can safely use one buffer/view for all of
+// the various generators and functions in this library, and not worry about
+// race conditions.
 final _bufferUint8 = Uint8List(16);
 final _bufferUint32 = Uint32List.view(_bufferUint8.buffer);
 
